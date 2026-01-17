@@ -4,6 +4,15 @@
 declare module 'obsidian' {
   export interface App {
     vault: Vault;
+    workspace: Workspace;
+  }
+
+  export interface Workspace {
+    activeEditor?: { editor: Editor };
+  }
+
+  export interface Editor {
+    replaceSelection(text: string): void;
   }
 
   export interface Vault {
@@ -30,9 +39,15 @@ declare module 'obsidian' {
 
   export function requestUrl(opts: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeout?: number; }): Promise<{ text: string }>;
 
+  export interface ObsidianHTMLElement extends HTMLElement {
+    empty(): void;
+    createEl(tagName: string, attrs?: any): HTMLElement;
+  }
+
   export class PluginSettingTab {
     app: App;
     plugin: Plugin;
+    containerEl: ObsidianHTMLElement;
     constructor(app: App, plugin: Plugin);
     display(): void;
     hide(): void;

@@ -15,9 +15,9 @@ const DEFAULT_SETTINGS: JWPluginSettings = {
 };
 
 export default class JWDailyTextPlugin extends Plugin {
-  settings: JWPluginSettings;
-  private midnightTimeoutId: number | null = null;
-  private dailyIntervalId: number | null = null;
+  settings!: JWPluginSettings;
+  public midnightTimeoutId: number | null = null;
+  public dailyIntervalId: number | null = null;
 
   async onload() {
     console.log('Loading JW Daily Text plugin');
@@ -28,6 +28,27 @@ export default class JWDailyTextPlugin extends Plugin {
       name: 'Fetch JW Daily Text',
       callback: async () => {
         await this.fetchAndWriteDailyText();
+      }
+    });
+
+    this.addCommand({
+      id: 'jw-insert-daily-text-at-cursor',
+      name: 'Insert JW Daily Text at Cursor',
+      callback: async () => {
+        const editor = this.app.workspace.activeEditor?.editor;
+        if (!editor) {
+          new Notice('No active editor found');
+          return;
+        }
+        try {
+          const dailyText = await this.fetchDailyText();
+          const formatted = this.buildMarkdownBlock(new Date(), dailyText);
+          editor.replaceSelection(formatted);
+          new Notice('JW Daily Text inserted at cursor');
+        } catch (error) {
+          console.error('Error inserting daily text:', error);
+          new Notice('Failed to insert JW Daily Text');
+        }
       }
     });
 
@@ -91,13 +112,17 @@ export default class JWDailyTextPlugin extends Plugin {
     const doc = parser.parseFromString(htmlString, 'text/html');
 
     const ems = Array.from(doc.querySelectorAll('em'));
-    const scripture = ems[0]?.textContent?.trim() ?? '';
+    const scripture = ems[0]?.textContent?.trim().replace(/.$/, '') ?? '';
     const citation = ems[1]?.textContent?.trim() ?? '';
 
     const paragraphs = Array.from(doc.querySelectorAll('p'));
     let commentary = '';
     for (const p of paragraphs) {
-      const txt = p.textContent?.trim() ?? '';
+      const txt = p.innerHTML
+        .replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2](https://wol.jw.org/en$1)')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .trim();
       if (!txt) continue;
       if (scripture && txt.includes(scripture)) continue;
       if (citation && txt.includes(citation)) continue;
@@ -106,7 +131,11 @@ export default class JWDailyTextPlugin extends Plugin {
     }
 
     if (!commentary) {
-      commentary = doc.body?.textContent?.trim() ?? '';
+      commentary = doc.body?.innerHTML
+        .replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2](https://wol.jw.org/en$1)')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .trim() ?? '';
     }
 
     return { scripture, citation, commentary };
@@ -114,12 +143,13 @@ export default class JWDailyTextPlugin extends Plugin {
 
   private buildMarkdownBlock(date: Date, parsed: { scripture: string; citation: string; commentary: string }) {
     const dateStr = date.toISOString().slice(0, 10);
-    let md = `# JW Daily Text — ${dateStr}\n\n`;
-    if (parsed.scripture) {
-      md += `**Scripture:** ${parsed.scripture}\n\n`;
-    }
+    let md = `# Daily Text - ${dateStr}\n\n`;
+    
     if (parsed.citation) {
-      md += `**Citation:** ${parsed.citation}\n\n`;
+      md += `>[!bible] ${parsed.citation}\n`;
+    }
+    if (parsed.scripture) {
+      md += `${parsed.scripture}\n\n`;
     }
     if (parsed.commentary) {
       md += `${parsed.commentary}\n\n`;
@@ -152,6 +182,29 @@ export default class JWDailyTextPlugin extends Plugin {
       console.error('Error writing to vault:', error);
       new Notice(`Error writing JW Daily Text to ${path}`);
     }
+  }
+
+  private async fetchDailyText(forDate?: Date): Promise<{ scripture: string; citation: string; commentary: string }> {
+    const targetDate = forDate ?? new Date();
+    const url = this.buildUrlForDate(targetDate);
+
+    const res = await requestUrl({ url, headers: { Accept: 'application/json' } });
+    const text = res?.text ?? '';
+    if (!text) throw new Error('Empty response from requestUrl');
+
+    let json: any;
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      throw new Error('Failed to parse response JSON: ' + (err as Error).message);
+    }
+
+    if (!json.items || !json.items[0] || !json.items[0].content) {
+      throw new Error('Unexpected response format (no items/content)');
+    }
+
+    const htmlContent: string = json.items[0].content;
+    return this.parseDailyHtml(htmlContent);
   }
 
   async fetchAndWriteDailyText(forDate?: Date) {
@@ -191,7 +244,7 @@ export default class JWDailyTextPlugin extends Plugin {
     }
   }
 
-  private scheduleDailyAutoFetch() {
+  public scheduleDailyAutoFetch() {
     if (this.midnightTimeoutId) {
       window.clearTimeout(this.midnightTimeoutId);
       this.midnightTimeoutId = null;
@@ -240,7 +293,7 @@ class JWSettingTab extends PluginSettingTab {
   }
 
   display(): void {
-    const { containerEl } = this;
+    const containerEl = this.containerEl;
     containerEl.empty();
 
     containerEl.createEl('h2', { text: 'JW Daily Text settings' });
@@ -252,7 +305,7 @@ class JWSettingTab extends PluginSettingTab {
         text
           .setPlaceholder(DEFAULT_SETTINGS.targetPathTemplate)
           .setValue(this.plugin.settings.targetPathTemplate)
-          .onChange(async (value) => {
+          .onChange(async (value: string) => {
             this.plugin.settings.targetPathTemplate = value.trim() || DEFAULT_SETTINGS.targetPathTemplate;
             await this.plugin.saveSettings();
           })
@@ -262,7 +315,7 @@ class JWSettingTab extends PluginSettingTab {
       .setName('Append to file')
       .setDesc('If true, new daily text will be appended. If false, the target file will be overwritten.')
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.appendToFile).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.appendToFile).onChange(async (value: boolean) => {
           this.plugin.settings.appendToFile = value;
           await this.plugin.saveSettings();
         })
@@ -272,7 +325,7 @@ class JWSettingTab extends PluginSettingTab {
       .setName('Auto-fetch daily')
       .setDesc('If enabled, the plugin will automatically fetch the daily text once per day at midnight.')
       .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.autoFetchDaily).onChange(async (value) => {
+        toggle.setValue(this.plugin.settings.autoFetchDaily).onChange(async (value: boolean) => {
           this.plugin.settings.autoFetchDaily = value;
           await this.plugin.saveSettings();
 
