@@ -4,14 +4,12 @@ interface JWPluginSettings {
   targetPathTemplate: string;
   appendToFile: boolean;
   autoFetchDaily: boolean;
-  lastAutoFetchDate?: string;
 }
 
 const DEFAULT_SETTINGS: JWPluginSettings = {
   targetPathTemplate: "Daily/JW Daily Text - {YYYY}-{MM}-{DD}.md",
   appendToFile: true,
   autoFetchDaily: false,
-  lastAutoFetchDate: ""
 };
 
 export default class JWDailyTextPlugin extends Plugin {
@@ -26,7 +24,6 @@ export default class JWDailyTextPlugin extends Plugin {
     this.addCommand({
       id: 'jw-fetch-daily-text',
       name: 'Fetch JW Daily Text',
-      icon: 'calendar-arrow-down',
       callback: async () => {
         await this.fetchAndWriteDailyText();
       }
@@ -35,7 +32,6 @@ export default class JWDailyTextPlugin extends Plugin {
     this.addCommand({
       id: 'jw-insert-daily-text-at-cursor',
       name: 'Insert JW Daily Text at Cursor',
-      icon: 'calendar-arrow-down',
       callback: async () => {
         const editor = this.app.workspace.activeEditor?.editor;
         if (!editor) {
@@ -51,14 +47,6 @@ export default class JWDailyTextPlugin extends Plugin {
           console.error('Error inserting daily text:', error);
           new Notice('Failed to insert JW Daily Text');
         }
-      }
-    });
-
-    this.addCommand({
-      id: 'jw-open-settings',
-      name: 'JW Daily Text: Open Settings',
-      callback: () => {
-        // settings tab will be opened by user in UI; this is a placeholder
       }
     });
 
@@ -168,13 +156,8 @@ export default class JWDailyTextPlugin extends Plugin {
         await vault.create(path, content);
       } else {
         if (append) {
-          try {
-            // @ts-ignore - Vault.append exists in Obsidian API
-            await vault.append(path, content);
-          } catch (e) {
-            const current = await vault.read(existing as TFile);
-            await vault.modify(existing as TFile, current + content);
-          }
+          const current = await vault.read(existing as TFile);
+          await vault.modify(existing as TFile, current + content);
         } else {
           await vault.modify(existing as TFile, content);
         }
@@ -211,29 +194,12 @@ export default class JWDailyTextPlugin extends Plugin {
 
   async fetchAndWriteDailyText(forDate?: Date) {
     const targetDate = forDate ?? new Date();
-    const url = this.buildUrlForDate(targetDate);
 
     new Notice('Fetching JW Daily Text...');
-    console.log('Fetching JW Daily Text from:', url);
+    console.log('Fetching JW Daily Text');
 
     try {
-      const res = await requestUrl({ url, headers: { Accept: 'application/json' } });
-      const text = res?.text ?? '';
-      if (!text) throw new Error('Empty response from requestUrl');
-
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch (err) {
-        throw new Error('Failed to parse response JSON: ' + (err as Error).message);
-      }
-
-      if (!json.items || !json.items[0] || !json.items[0].content) {
-        throw new Error('Unexpected response format (no items/content)');
-      }
-
-      const htmlContent: string = json.items[0].content;
-      const parsed = this.parseDailyHtml(htmlContent);
+      const parsed = await this.fetchDailyText(targetDate);
       const md = this.buildMarkdownBlock(targetDate, parsed);
 
       const path = this.formatPathTemplate(this.settings.targetPathTemplate, targetDate);
@@ -273,15 +239,8 @@ export default class JWDailyTextPlugin extends Plugin {
   }
 
   private async maybePerformAutoFetch() {
-    const todayIso = new Date().toISOString().slice(0, 10);
-    if (this.settings.lastAutoFetchDate === todayIso) {
-      console.log('JW Daily Text: already auto-fetched today, skipping.');
-      return;
-    }
-    console.log('JW Daily Text: performing auto-fetch for today:', todayIso);
+    console.log('JW Daily Text: performing auto-fetch');
     await this.fetchAndWriteDailyText(new Date());
-    this.settings.lastAutoFetchDate = todayIso;
-    await this.saveSettings();
   }
 }
 
