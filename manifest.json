@@ -1,0 +1,11 @@
+{
+  "id": "jw-daily-text",
+  "name": "JW Daily Text",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Fetch the JW.org daily text and append it to a note (TypeScript + Rollup build).",
+  "author": "yarko-w",
+  "authorUrl": "",
+  "isDesktopOnly": false,
+  "main": "main.js"
+}
