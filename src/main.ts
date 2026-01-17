@@ -26,6 +26,7 @@ export default class JWDailyTextPlugin extends Plugin {
     this.addCommand({
       id: 'jw-fetch-daily-text',
       name: 'Fetch JW Daily Text',
+      icon: 'calendar-arrow-down',
       callback: async () => {
         await this.fetchAndWriteDailyText();
       }
@@ -34,6 +35,7 @@ export default class JWDailyTextPlugin extends Plugin {
     this.addCommand({
       id: 'jw-insert-daily-text-at-cursor',
       name: 'Insert JW Daily Text at Cursor',
+      icon: 'calendar-arrow-down',
       callback: async () => {
         const editor = this.app.workspace.activeEditor?.editor;
         if (!editor) {
