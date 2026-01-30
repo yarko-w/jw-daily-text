@@ -50,43 +50,66 @@ export class DailyTextFetcher {
   }
 
   private extractScripture(html: string): string {
-    // First, try to get the first <em> tag content
-    const firstEmMatch = html.match(/<em>(.*?)<\/em>/s);
-    if (!firstEmMatch) return '';
+    // Look for scripture in <em> tags, but handle the case where scripture might be in regular text
+    const emMatches = html.match(/<em>(.*?)<\/em>/gs);
+    if (!emMatches || emMatches.length === 0) return '';
 
-    const firstEmContent = this.cleanHtml(firstEmMatch[1]);
+    // Get all em tag contents
+    const emContents = emMatches.map(em => this.cleanHtml(em.replace(/<\/?em>/g, '')));
 
-    // Check if citation is embedded in the scripture (contains em dash followed by book reference)
-    // Pattern: text—Book chapter:verse or text—Book chapter
-    const embeddedCitationMatch = firstEmContent.match(/^(.+?)—\s*([1-3]?\s*[A-Za-z]+\.?\s*\d+(?::\d+)?\.?)$/);
+    // The scripture is typically the first substantial text before any citation
+    // Look for patterns like "Love never fails..." before citations like "—1 Cor. 13:8"
 
-    if (embeddedCitationMatch) {
-      // Citation is embedded, return just the scripture part (before the em dash)
-      return embeddedCitationMatch[1].trim();
-    }
+    // First, try to find scripture in paragraphs that come before citation paragraphs
+    const paragraphs = html.split(/<\/?p[^>]*>/).filter(p => p.trim());
 
-    // No embedded citation, return the full content
-    return firstEmContent;
-  }
-
-  private extractCitation(html: string): string {
-    // First check if citation is embedded in the first <em> tag
-    const firstEmMatch = html.match(/<em>(.*?)<\/em>/s);
-    if (firstEmMatch) {
-      const firstEmContent = this.cleanHtml(firstEmMatch[1]);
-
-      // Check for embedded citation pattern
-      const embeddedCitationMatch = firstEmContent.match(/—\s*([1-3]?\s*[A-Za-z]+\.?\s*\d+(?::\d+)?\.?)$/);
-      if (embeddedCitationMatch) {
-        return embeddedCitationMatch[1].trim();
+    for (const para of paragraphs) {
+      const cleanPara = this.cleanHtml(para);
+      // Skip if it looks like a citation (starts with dash or contains bible reference patterns)
+      if (!cleanPara.match(/^—/) && !cleanPara.match(/^\d+\s*[A-Za-z]+\./) && cleanPara.length > 10) {
+        // Check if this paragraph contains the actual scripture
+        // Scripture typically doesn't contain URLs and is substantial text
+        if (!para.includes('href') && cleanPara.length > 20) {
+          return cleanPara;
+        }
       }
     }
 
-    // If not embedded, try the second <em> tag (traditional format)
-    const emTags = html.match(/<em>(.*?)<\/em>/gs);
-    if (emTags && emTags.length >= 2) {
-      const citation = emTags[1].replace(/<\/?em>/g, '');
-      return this.cleanHtml(citation);
+    // Fallback: try the first em content that doesn't look like a citation
+    for (const content of emContents) {
+      if (!content.match(/^—/) && !content.match(/^\d+\s*[A-Za-z]+\./) && content.length > 10) {
+        return content;
+      }
+    }
+
+    // Last resort: return first em content
+    return emContents[0] || '';
+  }
+
+  private extractCitation(html: string): string {
+    // Look for citation patterns in em tags
+    const emMatches = html.match(/<em>(.*?)<\/em>/gs);
+    if (!emMatches) return '';
+
+    const emContents = emMatches.map(em => this.cleanHtml(em.replace(/<\/?em>/g, '')));
+
+    // Look for citation patterns: "—1 Cor. 13:8" or "1 Cor. 13:8"
+    for (const content of emContents) {
+      // Check for em dash followed by bible reference
+      const citationMatch = content.match(/^—\s*([1-3]?\s*[A-Za-z]+\.?\s*\d+(?::\d+)?\.?)$/);
+      if (citationMatch) {
+        return citationMatch[1].trim();
+      }
+      // Check for bible reference pattern
+      const bibleRefMatch = content.match(/^([1-3]?\s*[A-Za-z]+\.?\s*\d+(?::\d+)?\.?)$/);
+      if (bibleRefMatch) {
+        return bibleRefMatch[1].trim();
+      }
+    }
+
+    // Fallback: second em tag if it exists
+    if (emContents.length >= 2) {
+      return emContents[1];
     }
 
     return '';
@@ -98,7 +121,9 @@ export class DailyTextFetcher {
 
     for (let i = 2; i < pTags.length; i++) {
       const pContent = pTags[i].split('</p>')[0];
-      const cleaned = this.cleanHtml(pContent);
+      // Process links before cleaning HTML
+      const withLinks = this.processLinks(pContent);
+      const cleaned = this.cleanHtml(withLinks);
 
       // Skip if it's just the citation or empty
       if (cleaned && cleaned.length > 20) {
@@ -107,6 +132,11 @@ export class DailyTextFetcher {
     }
 
     return '';
+  }
+
+  private processLinks(html: string): string {
+    // Convert JW.org links to markdown format
+    return html.replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2](https://wol.jw.org/en$1)');
   }
 
   private cleanHtml(html: string): string {
