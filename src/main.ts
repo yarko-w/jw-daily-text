@@ -1,4 +1,5 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, requestUrl, TFile } from 'obsidian';
+import { DailyTextFetcher, DailyText } from './fetcher';
 
 interface JWPluginSettings {
   targetPathTemplate: string;
@@ -16,10 +17,13 @@ export default class JWDailyTextPlugin extends Plugin {
   settings!: JWPluginSettings;
   public midnightTimeoutId: number | null = null;
   public dailyIntervalId: number | null = null;
+  private fetcher!: DailyTextFetcher;
 
   async onload() {
     console.log('Loading JW Daily Text plugin');
     await this.loadSettings();
+
+    this.fetcher = new DailyTextFetcher();
 
     this.addCommand({
       id: 'jw-fetch-daily-text',
@@ -83,12 +87,14 @@ export default class JWDailyTextPlugin extends Plugin {
     return n < 10 ? `0${n}` : `${n}`;
   }
 
-  private buildUrlForDate(date: Date) {
+  private formatDate(date: Date): string {
     const yyyy = date.getFullYear();
     const mm = this.pad(date.getMonth() + 1);
     const dd = this.pad(date.getDate());
-    return `https://wol.jw.org/wol/dt/r1/lp-e/${yyyy}/${mm}/${dd}`;
+    return `${yyyy}-${mm}-${dd}`;
   }
+
+
 
   private formatPathTemplate(template: string, date: Date) {
     const YYYY = date.getFullYear().toString();
@@ -97,39 +103,7 @@ export default class JWDailyTextPlugin extends Plugin {
     return template.replace(/{YYYY}/g, YYYY).replace(/{MM}/g, MM).replace(/{DD}/g, DD);
   }
 
-  private parseDailyHtml(htmlString: string) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlString, 'text/html');
 
-    const ems = Array.from(doc.querySelectorAll('em'));
-    const scripture = ems[0]?.textContent?.trim().replace(/.$/, '') ?? '';
-    const citation = ems[1]?.textContent?.trim() ?? '';
-
-    const paragraphs = Array.from(doc.querySelectorAll('p'));
-    let commentary = '';
-    for (const p of paragraphs) {
-      const txt = p.innerHTML
-        .replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2](https://wol.jw.org/en$1)')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .trim();
-      if (!txt) continue;
-      if (scripture && txt.includes(scripture)) continue;
-      if (citation && txt.includes(citation)) continue;
-      commentary = txt;
-      break;
-    }
-
-    if (!commentary) {
-      commentary = doc.body?.innerHTML
-        .replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2](https://wol.jw.org/en$1)')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .trim() ?? '';
-    }
-
-    return { scripture, citation, commentary };
-  }
 
   private buildMarkdownBlock(date: Date, parsed: { scripture: string; citation: string; commentary: string }) {
     const dateStr = date.toISOString().slice(0, 10);
@@ -171,25 +145,13 @@ export default class JWDailyTextPlugin extends Plugin {
 
   private async fetchDailyText(forDate?: Date): Promise<{ scripture: string; citation: string; commentary: string }> {
     const targetDate = forDate ?? new Date();
-    const url = this.buildUrlForDate(targetDate);
-
-    const res = await requestUrl({ url, headers: { Accept: 'application/json' } });
-    const text = res?.text ?? '';
-    if (!text) throw new Error('Empty response from requestUrl');
-
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch (err) {
-      throw new Error('Failed to parse response JSON: ' + (err as Error).message);
-    }
-
-    if (!json.items || !json.items[0] || !json.items[0].content) {
-      throw new Error('Unexpected response format (no items/content)');
-    }
-
-    const htmlContent: string = json.items[0].content;
-    return this.parseDailyHtml(htmlContent);
+    const dateStr = this.formatDate(targetDate);
+    const dailyText = await this.fetcher.fetchDailyTextForDate(dateStr);
+    return {
+      scripture: dailyText.scripture,
+      citation: dailyText.citation,
+      commentary: dailyText.commentary
+    };
   }
 
   async fetchAndWriteDailyText(forDate?: Date) {
