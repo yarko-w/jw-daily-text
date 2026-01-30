@@ -1,6 +1,6 @@
 {
   "name": "obsidian-jw-daily-text",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Obsidian plugin to fetch JW.org Daily Text and save to a note",
   "main": "main.js",
   "scripts": {

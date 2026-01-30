@@ -85,8 +85,13 @@ export class DailyTextFetcher {
         continue;
       }
 
-      // This should be the scripture - clean up any trailing punctuation
-      return cleanPara.replace(/[—\-]+$/, '').trim();
+      // This should be the scripture - clean up any trailing punctuation and citations
+      let scripture = cleanPara.replace(/[—\-]+$/, '').trim();
+
+      // Remove embedded citations that appear after em dashes
+      scripture = scripture.replace(/—\s*\d*\s*[A-Za-z]+\.\s*\d+(?::\d+)?\.?$/, '').trim();
+
+      return scripture;
     }
 
     // Fallback to em content approach
@@ -95,7 +100,7 @@ export class DailyTextFetcher {
       const emContents = emMatches.map(em => this.cleanHtml(em.replace(/<\/?em>/g, '')));
       for (const content of emContents) {
         if (!content.match(/^—/) && !content.match(/^\d+\s*[A-Za-z]+\./) && content.length > 10) {
-          return content.replace(/[—\-]+$/, '').trim();
+          return content.replace(/[—\-]+$/, '').trim().replace(/—\s*\d*\s*[A-Za-z]+\.\s*\d+(?::\d+)?\.?$/, '').trim();
         }
       }
     }
