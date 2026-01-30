@@ -66,8 +66,22 @@ export class DailyTextFetcher {
         continue;
       }
 
+      // Skip date headers and day/month names
+      if (cleanPara.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/i) ||
+          cleanPara.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)/i) ||
+          cleanPara.match(/^\d{1,2}, \d{4}$/) || // Date patterns like "30, 2026"
+          cleanPara.match(/^\d{4}-\d{2}-\d{2}$/)) { // ISO date patterns
+        continue;
+      }
+
       // Skip if it's too short or looks like commentary
       if (cleanPara.length < 15 || cleanPara.includes('w24.') || cleanPara.includes('¶')) {
+        continue;
+      }
+
+      // Additional check: scripture should contain typical scripture words/phrases
+      // and not be just a header or title
+      if (cleanPara.split(' ').length < 5) { // Too few words for scripture
         continue;
       }
 
