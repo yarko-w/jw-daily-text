@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-jw-daily-text",
+  "name": "JW Daily Text",
+  "version": "0.2.0",
+  "minAppVersion": "0.15.0",
+  "description": "Fetch JW.org Daily Text and save to a note",
+  "author": "Jackson Wiltshire",
+  "authorUrl": "https://github.com/yarko-w/jw-daily-text",
+  "isDesktopOnly": false
+}
