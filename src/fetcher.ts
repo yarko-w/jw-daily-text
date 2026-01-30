@@ -50,40 +50,43 @@ export class DailyTextFetcher {
   }
 
   private extractScripture(html: string): string {
-    // Look for scripture in <em> tags, but handle the case where scripture might be in regular text
-    const emMatches = html.match(/<em>(.*?)<\/em>/gs);
-    if (!emMatches || emMatches.length === 0) return '';
-
-    // Get all em tag contents
-    const emContents = emMatches.map(em => this.cleanHtml(em.replace(/<\/?em>/g, '')));
-
-    // The scripture is typically the first substantial text before any citation
-    // Look for patterns like "Love never fails..." before citations like "—1 Cor. 13:8"
-
-    // First, try to find scripture in paragraphs that come before citation paragraphs
-    const paragraphs = html.split(/<\/?p[^>]*>/).filter(p => p.trim());
+    // Split HTML into paragraphs
+    const paragraphs = html.split(/<\/?p[^>]*>/).filter(p => p.trim() && p.length > 10);
 
     for (const para of paragraphs) {
+      // Skip paragraphs that are just links or citations
+      if (para.includes('<a href') && para.match(/<a[^>]*>.*?<\/a>/)?.[0] === para.trim()) {
+        continue; // Skip paragraphs that are just links
+      }
+
       const cleanPara = this.cleanHtml(para);
-      // Skip if it looks like a citation (starts with dash or contains bible reference patterns)
-      if (!cleanPara.match(/^—/) && !cleanPara.match(/^\d+\s*[A-Za-z]+\./) && cleanPara.length > 10) {
-        // Check if this paragraph contains the actual scripture
-        // Scripture typically doesn't contain URLs and is substantial text
-        if (!para.includes('href') && cleanPara.length > 20) {
-          return cleanPara;
+
+      // Skip if it looks like a citation (starts with dash or bible reference)
+      if (cleanPara.match(/^—/) || cleanPara.match(/^\d+\s*[A-Za-z]+\./)) {
+        continue;
+      }
+
+      // Skip if it's too short or looks like commentary
+      if (cleanPara.length < 15 || cleanPara.includes('w24.') || cleanPara.includes('¶')) {
+        continue;
+      }
+
+      // This should be the scripture - clean up any trailing punctuation
+      return cleanPara.replace(/[—\-]+$/, '').trim();
+    }
+
+    // Fallback to em content approach
+    const emMatches = html.match(/<em>(.*?)<\/em>/gs);
+    if (emMatches) {
+      const emContents = emMatches.map(em => this.cleanHtml(em.replace(/<\/?em>/g, '')));
+      for (const content of emContents) {
+        if (!content.match(/^—/) && !content.match(/^\d+\s*[A-Za-z]+\./) && content.length > 10) {
+          return content.replace(/[—\-]+$/, '').trim();
         }
       }
     }
 
-    // Fallback: try the first em content that doesn't look like a citation
-    for (const content of emContents) {
-      if (!content.match(/^—/) && !content.match(/^\d+\s*[A-Za-z]+\./) && content.length > 10) {
-        return content;
-      }
-    }
-
-    // Last resort: return first em content
-    return emContents[0] || '';
+    return '';
   }
 
   private extractCitation(html: string): string {
